@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BeadForge · 拼豆图纸生成器 / Perler Bead Pattern Generator</title>
+<meta name="description" content="把任意图片转成拼豆（Perler / MARD / COCO…）像素图纸：标准袋装色号、颜色清单、PNG 导出，全部在浏览器本地完成。" />
+<meta name="theme-color" content="#0E1428" />
+<style>
+:root {
+  --bg: #0A0F22;
+  --surface: #131A31;
+  --surface2: #1A2242;
+  --text: #E8EEF9;
+  --muted: #8FA2C0;
+  --border: #2A3358;
+  --primary: #4A90E2;
+  --glow: #7C6CE8;
+  --accent: linear-gradient(135deg, var(--primary), var(--glow));
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: radial-gradient(1200px 700px at 50% -10%, #1B2447 0%, var(--bg) 60%);
+  color: var(--text);
+  font: 14px/1.6 "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+  min-height: 100vh;
+}
+.wrap { max-width: 1180px; margin: 0 auto; padding: 28px 20px 60px; }
+header { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
+header .titles { flex: 1; min-width: 260px; }
+h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: .3px; }
+h1 .sub { font-size: 15px; font-weight: 400; color: var(--muted); margin-left: 8px; }
+.lead { margin: 0; color: var(--muted); font-size: 13px; max-width: 760px; }
+.lang { display: flex; gap: 6px; }
+.lang button, .seg button {
+  background: var(--surface2); color: var(--muted); border: 1px solid var(--border);
+  border-radius: 999px; padding: 6px 14px; font-size: 12px; cursor: pointer; font-family: inherit;
+}
+.lang button.on, .seg button.on { background: var(--accent); color: #fff; border-color: transparent; }
+.panel {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  padding: 18px 20px; margin-bottom: 16px;
+}
+.panel-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.panel-head h2 { margin: 0; font-size: 17px; }
+.stats { color: var(--muted); font-size: 13px; }
+.drop {
+  border: 2px dashed var(--border); border-radius: 16px; background: var(--surface);
+  color: var(--muted); padding: 64px 20px; text-align: center; cursor: pointer;
+  transition: border-color .2s, background .2s;
+}
+.drop:hover, .drop.over { border-color: var(--primary); background: var(--surface2); }
+.drop svg { color: var(--primary); margin-bottom: 10px; }
+.drop .big { color: var(--text); font-size: 15px; margin: 0 0 6px; }
+.drop .small { font-size: 12px; margin: 0; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px 22px; }
+.field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.field label b { color: var(--text); }
+select, input[type="range"] { width: 100%; }
+select {
+  background: var(--surface2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 7px 10px; font-family: inherit; font-size: 13px;
+}
+input[type="range"] { accent-color: var(--primary); }
+.hint { display: block; margin-top: 6px; font-size: 11px; color: var(--muted); }
+.presets { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.presets button {
+  background: var(--surface2); color: var(--muted); border: 1px solid var(--border);
+  border-radius: 8px; padding: 4px 10px; font-size: 12px; cursor: pointer; font-family: inherit;
+}
+.presets button.on { color: #fff; background: var(--accent); border-color: transparent; }
+.seg { display: flex; gap: 6px; }
+.preview-wrap { overflow: auto; max-height: 62vh; border-radius: 10px; background: #0C1226; padding: 8px; }
+canvas.preview { display: block; image-rendering: pixelated; }
+.legend { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.legend li {
+  display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 9px;
+  background: var(--surface2); border: 1px solid var(--border); cursor: pointer;
+}
+.legend li.on { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary) inset; }
+.legend .swatch { width: 22px; height: 22px; border-radius: 6px; border: 1px solid rgba(255,255,255,.18); flex: none; }
+.legend .code { font-weight: 700; font-size: 13px; }
+.legend .name, .legend .hex { color: var(--muted); font-size: 11px; margin-left: 6px; }
+.legend .count { margin-left: auto; font-size: 12px; color: var(--muted); }
+.actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+.actions button {
+  border: 1px solid var(--border); background: var(--surface2); color: var(--text);
+  border-radius: 10px; padding: 10px 16px; font-size: 13px; cursor: pointer; font-family: inherit;
+}
+.actions button.primary { background: var(--accent); border-color: transparent; color: #fff; font-weight: 600; }
+.actions button:hover { filter: brightness(1.12); }
+.tip { margin: 6px 0 10px; font-size: 12px; color: var(--muted); }
+footer { margin-top: 26px; color: var(--muted); font-size: 12px; line-height: 1.8; }
+footer a { color: var(--primary); text-decoration: none; }
+footer a:hover { text-decoration: underline; }
+.mono { font-family: Consolas, "Courier New", monospace; }
+@media (max-width: 620px) {
+  .wrap { padding: 18px 12px 40px; }
+  h1 { font-size: 21px; }
+  .drop { padding: 40px 14px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="titles">
+      <h1>BeadForge<span class="sub" data-i18n="tagline"></span></h1>
+      <p class="lead" data-i18n="lead"></p>
+    </div>
+    <div class="lang">
+      <button type="button" id="lang-zh" class="on">中文</button>
+      <button type="button" id="lang-en">EN</button>
+    </div>
+  </header>
+
+  <div class="drop" id="drop">
+    <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="9" cy="9" r="2" /><path d="M21 15l-4.5-4.5L7 20" />
+    </svg>
+    <p class="big" data-i18n="dropTitle"></p>
+    <p class="small" data-i18n="dropSub"></p>
+    <input type="file" id="file" accept="image/*" hidden />
+  </div>
+
+  <main id="main" hidden>
+    <section class="panel">
+      <div class="grid">
+        <div class="field">
+          <label data-i18n="brand"></label>
+          <select id="brand"></select>
+        </div>
+        <div class="field">
+          <label><span data-i18n="width"></span> <b id="wLabel">50</b></label>
+          <input type="range" id="width" min="10" max="150" step="1" value="50" />
+          <div class="presets" id="presets"></div>
+        </div>
+        <div class="field">
+          <label><span data-i18n="brightness"></span> <b id="bLabel">0</b></label>
+          <input type="range" id="brightness" min="-80" max="80" step="5" value="0" />
+          <span class="hint" data-i18n="brightnessHint"></span>
+        </div>
+        <div class="field">
+          <label data-i18n="maxColors"></label>
+          <select id="maxColors"></select>
+        </div>
+        <div class="field">
+          <label data-i18n="dither"></label>
+          <div class="seg" id="dither">
+            <button type="button" data-v="none" class="on"></button>
+            <button type="button" data-v="fs"></button>
+          </div>
+          <span class="hint" data-i18n="ditherHint"></span>
+        </div>
+        <div class="field">
+          <label data-i18n="shape"></label>
+          <div class="seg" id="shape">
+            <button type="button" data-v="circle" class="on"></button>
+            <button type="button" data-v="square"></button>
+          </div>
+        </div>
+        <div class="field">
+          <label data-i18n="grid"></label>
+          <div class="seg" id="showGrid">
+            <button type="button" data-v="1" class="on"></button>
+            <button type="button" data-v="0"></button>
+          </div>
+        </div>
+        <div class="field">
+          <label data-i18n="printCodes"></label>
+          <div class="seg" id="printCodes">
+            <button type="button" data-v="1" class="on"></button>
+            <button type="button" data-v="0"></button>
+          </div>
+        </div>
+        <div class="field">
+          <label>&nbsp;</label>
+          <button type="button" class="actions" id="reset" style="border-radius:10px;padding:9px 14px;background:var(--surface2);color:var(--text);border:1px solid var(--border);cursor:pointer" data-i18n="changeImage"></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2 data-i18n="preview"></h2>
+        <span class="stats" id="stats"></span>
+      </div>
+      <p class="tip" id="alphaTip" hidden data-i18n="alphaTip"></p>
+      <p class="tip" id="hlTip" hidden></p>
+      <div class="preview-wrap"><canvas class="preview" id="preview"></canvas></div>
+    </section>
+
+    <section class="panel" id="legendPanel" hidden>
+      <div class="panel-head">
+        <h2 id="legendTitle"></h2>
+        <span class="stats" id="legendHint"></span>
+      </div>
+      <ul class="legend" id="legend"></ul>
+      <div class="actions">
+        <button type="button" class="primary" id="dlFull" data-i18n="dlFull"></button>
+        <button type="button" id="dlPlain" data-i18n="dlPlain"></button>
+        <button type="button" id="dlCsv" data-i18n="dlCsv"></button>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div data-i18n="privacy"></div>
+    <div>BeadForge · <span data-i18n="licenseNote"></span> · <a href="LICENSE">LICENSE</a></div>
+  </footer>
+</div>
+
+<script>
+/* =========================================================================
+ * BeadForge —— 图片转拼豆图纸（单文件、零依赖、离线可用）
+ *
+ * 流水线：缩放采样 → 亮度补偿 →（可选）Floyd–Steinberg 抖动
+ *        → redmean 加权最近色匹配 → 按用量归并限制颜色数
+ *        → Canvas 预览 / 导出 PNG（含行列标尺与色号）/ 导出 CSV 清单
+ *
+ * 全部计算在浏览器本地完成，图片不会上传到任何服务器。
+ * 色卡数据见 PAL_RAW（各品牌袋装编码 → HEX）。
+ * ======================================================================= */
+
+/* ---------- 1. 色卡数据（由 tools 注入，格式 'CODE=#HEX' 逗号分隔） ---------- */
+const PAL_RAW = {"mard":"A01=#FAF4C8,A02=#FFFFD5,A03=#FEFF8B,A04=#FBED56,A05=#F4D738,A06=#FEAC4C,A07=#FE8B4C,A08=#FFDA45,A09=#FF995B,A10=#F77C31,A11=#FFDD99,A12=#FE9F72,A13=#FFC365,A14=#FD543D,A15=#FFF365,A16=#FFFF9F,A17=#FFE36E,A18=#FEBE7D,A19=#FD7C72,A20=#FFD568,A21=#FFE395,A22=#F4F57D,A23=#E6C9B7,A24=#F7F8A2,A25=#FFD67D,A26=#FFC830,B01=#E6EE31,B02=#63F347,B03=#9EF780,B04=#5DE035,B05=#35E352,B06=#65E2A6,B07=#3DAF80,B08=#1C9C4F,B09=#27523A,B10=#95D3C2,B11=#5D722A,B12=#166F41,B13=#CAEB7B,B14=#ADE946,B15=#2E5132,B16=#C5ED9C,B17=#9BB13A,B18=#E6EE49,B19=#24B88C,B20=#C2F0CC,B21=#156A6B,B22=#0B3C43,B23=#303A21,B24=#EEFCA5,B25=#4E846D,B26=#8D7A35,B27=#CCE1AF,B28=#9EE5B9,B29=#C5E254,B30=#E2FCB1,B31=#B0E792,B32=#9CAB5A,C01=#E8FFE7,C02=#A9F9FC,C03=#A0E2FB,C04=#41CCFF,C05=#01ACEB,C06=#50AAF0,C07=#3677D2,C08=#0F54C0,C09=#324BCA,C10=#3EBCE2,C11=#28DDDE,C12=#1C334D,C13=#CDE8FF,C14=#D5FDFF,C15=#22C4C6,C16=#1557A8,C17=#04D1F6,C18=#1D3344,C19=#1887A2,C20=#176DAF,C21=#BEDDFF,C22=#67B4BE,C23=#C8E2FF,C24=#7CC4FF,C25=#A9E5E5,C26=#3CAED8,C27=#D3DFFA,C28=#BBCFED,C29=#34488E,D01=#AEB4F2,D02=#858EDD,D03=#2F54AF,D04=#182A84,D05=#B843C5,D06=#AC7BDE,D07=#8854B3,D08=#E2D3FF,D09=#D5B9F8,D10=#361851,D11=#B9BAE1,D12=#DE9AD4,D13=#B90095,D14=#8B279B,D15=#2F1F90,D16=#E3E1EE,D17=#C4D4F6,D18=#A45EC7,D19=#D8C3D7,D20=#9C32B2,D21=#9A009B,D22=#333A95,D23=#EBDAFC,D24=#7786E5,D25=#494FC7,D26=#DFC2F8,E01=#FDD3CC,E02=#FEC0DF,E03=#FFB7E7,E04=#E8649E,E05=#F551A2,E06=#F13D74,E07=#C63478,E08=#FFDBE9,E09=#E970CC,E10=#D33793,E11=#FCDDD2,E12=#F78FC3,E13=#B5006D,E14=#FFD1BA,E15=#F8C7C9,E16=#FFF3EB,E17=#FFE2EA,E18=#FFC7DB,E19=#FEBAD5,E20=#D8C7D1,E21=#BD9DA1,E22=#B785A1,E23=#937A8D,E24=#E1BCE8,F01=#FD957B,F02=#FC3D46,F03=#F74941,F04=#FC283C,F05=#E7002F,F06=#943630,F07=#971937,F08=#BC0028,F09=#E2677A,F10=#8A4526,F11=#5A2121,F12=#FD4E6A,F13=#F35744,F14=#FFA9AD,F15=#D30022,F16=#FEC2A6,F17=#E69C79,F18=#D37C46,F19=#C1444A,F20=#CD9391,F21=#F7B4C6,F22=#FDC0D0,F23=#F67E66,F24=#E698AA,F25=#E54B4F,G01=#FFE2CE,G02=#FFC4AA,G03=#F4C3A5,G04=#E1B383,G05=#EDB045,G06=#E99C17,G07=#9D5B3E,G08=#753832,G09=#E6B483,G10=#D98C39,G11=#E0C593,G12=#FFC890,G13=#B7714A,G14=#8D614C,G15=#FCF9E0,G16=#F2D9BA,G17=#78524B,G18=#FFE4CC,G19=#E07935,G20=#A94023,G21=#B88558,H01=#FDFBFF,H02=#FEFFFF,H03=#B6B1BA,H04=#89858C,H05=#48464E,H06=#2F2B2F,H07=#000000,H08=#E7D6DB,H09=#EDEDED,H10=#EEE9EA,H11=#CECDD5,H12=#FFF5ED,H13=#F5ECD2,H14=#CFD7D3,H15=#98A6A8,H16=#1D1414,H17=#F1EDED,H18=#FFFDF0,H19=#F6EFE2,H20=#949FA3,H21=#FFFBE1,H22=#CACAD4,H23=#9A9D94,M01=#BCC6B8,M02=#8AA386,M03=#697D80,M04=#E3D2BC,M05=#D0CCAA,M06=#B0A782,M07=#B4A497,M08=#B38281,M09=#A58767,M10=#C5B2BC,M11=#9F7594,M12=#644749,M13=#D19066,M14=#C77362,M15=#757D78,P01=#FCF7F8,P02=#B0A9AC,P03=#AFDCAB,P04=#FEA49F,P05=#EE8C3E,P06=#5FD0A7,P07=#EB9270,P08=#F0D958,P09=#D9D9D9,P10=#D9C7EA,P11=#F3ECC9,P12=#E6EEF2,P13=#AACBEF,P14=#337680,P15=#668575,P16=#FEBF45,P17=#FEA324,P18=#FEB89F,P19=#FFFEEC,P20=#FEBECF,P21=#ECBEBF,P22=#E4A89F,P23=#A56268,Q01=#F2A5E8,Q02=#E9EC91,Q03=#FFFF00,Q04=#FFEBFA,Q05=#76CEDE,R01=#D50D21,R02=#F92F83,R03=#FD8324,R04=#F8EC31,R05=#35C75B,R06=#238891,R07=#19779D,R08=#1A60C3,R09=#9A56B4,R10=#FFDB4C,R11=#FFEBFB,R12=#D8D5CE,R13=#55514C,R14=#9FE4DF,R15=#77CEE9,R16=#3ECFCA,R17=#4A867A,R18=#7FCD9D,R19=#CDE55D,R20=#E8C7B4,R21=#AD6F3C,R22=#6C372F,R23=#FEB872,R24=#F3C1C0,R25=#C9675E,R26=#D293BE,R27=#EA8CB1,R28=#9C87D6,T01=#FFFFFF,Y01=#FD6FB4,Y02=#FEB481,Y03=#D7FAA0,Y04=#8BDBFA,Y05=#E987EA,ZG1=#DAABB3,ZG2=#D6AA87,ZG3=#C1BD8D,ZG4=#96869F,ZG5=#8490A6,ZG6=#94BFE2,ZG7=#E2A9D2,ZG8=#AB91C0","coco":"A01=#FEFFFF,A02=#FDFBFF,A03=#FFFDF0,A04=#FFF5ED,A05=#F6EFE2,A06=#F5ECD2,A07=#F1EDED,A08=#EDEDED,A09=#E7D6DB,A10=#EEE9EA,A11=#FFFBE1,A12=#CACAD4,B01=#CECDD5,B02=#CFD7D3,B03=#B6B1BA,B04=#98A6A8,B05=#89858C,B06=#48464E,B07=#2F2B2F,B08=#1D1414,B09=#000000,B10=#949FA3,B11=#9A9D94,C01=#FD4E6A,C02=#FC3D46,C03=#F74941,C04=#F35744,C05=#FD543D,C06=#FC283C,C07=#E7002F,C08=#D30022,C09=#BC0028,C10=#971937,D01=#FFDD99,D02=#FEBE7D,D03=#F4D738,D04=#FFC365,D05=#FEAC4C,D06=#FF995B,D07=#F77C31,D08=#FE8B4C,E01=#FFFFD5,E02=#FAF4C8,E03=#FFFF9F,E04=#FFF365,E05=#FEFF8B,E06=#FFE36E,E07=#FBED56,E08=#FFDA45,E09=#FFD568,E10=#FFE395,E11=#F4F57D,E12=#E6C9B7,E13=#F7F8A2,E14=#FFD67D,E15=#FFC830,F01=#EEFCA5,F02=#CAEB7B,F03=#C5ED9C,F04=#9EF780,F05=#E6EE31,F06=#ADE946,F07=#E6EE49,F08=#63F347,F09=#5DE035,F10=#35E352,F11=#1C9C4F,F12=#166F41,F13=#9BB13A,F14=#5D722A,F15=#2E5132,F16=#27523A,F17=#303A21,F18=#4E846D,F19=#8D7A35,F20=#CCE1AF,F21=#9EE5B9,F22=#C5E254,F23=#E2FCB1,F24=#B0E792,F25=#9CAB5A,G01=#E8FFE7,G02=#C2F0CC,G03=#95D3C2,G04=#65E2A6,G05=#3DAF80,G06=#24B88C,G07=#156A6B,G08=#0B3C43,GB1=#DAABB3,GB2=#D6AA87,GB3=#C1BD8D,GB4=#96869F,GB5=#8490A6,GB6=#94BFE2,GB7=#E2A9D2,GB8=#AB91C0,H01=#CDE8FF,H02=#D5FDFF,H03=#A9F9FC,H04=#A0E2FB,H05=#41CCFF,H06=#BEDDFF,H07=#01ACEB,H08=#50AAF0,H09=#3EBCE2,H10=#28DDDE,H11=#22C4C6,H12=#1887A2,H13=#3677D2,H14=#0F54C0,H15=#2F54AF,H16=#324BCA,H17=#176DAF,H18=#1557A8,H19=#04D1F6,H20=#182A84,H21=#333A95,H22=#2F1F90,H23=#1C334D,H24=#1D3344,H25=#67B4BE,H26=#C8E2FF,H27=#7CC4FF,H28=#A9E5E5,H29=#3CAED8,H30=#D3DFFA,H31=#BBCFED,H32=#34488E,J01=#E3E1EE,J02=#EBDAFC,J03=#E2D3FF,J04=#D5B9F8,J05=#C4D4F6,J06=#B9BAE1,J07=#AEB4F2,J08=#858EDD,J09=#D8C3D7,J10=#DE9AD4,J11=#AC7BDE,J12=#B843C5,J13=#A45EC7,J14=#B90095,J15=#8854B3,J16=#8B279B,J17=#9C32B2,J18=#9A009B,J19=#361851,J20=#7786E5,J21=#494FC7,J22=#DFC2F8,K01=#FFF3EB,K02=#FCDDD2,K03=#FDD3CC,K04=#F8C7C9,K05=#FFD1BA,K06=#FEC2A6,K07=#FFA9AD,K08=#FD957B,K09=#FE9F72,K10=#FD7C72,K11=#FFE2EA,K12=#FFDBE9,K13=#FFC7DB,K14=#FEBAD5,K15=#FEC0DF,K16=#F78FC3,K17=#FFB7E7,K18=#E970CC,K19=#F551A2,K20=#E2677A,K21=#E8649E,K22=#F13D74,K23=#D33793,K24=#B5006D,K25=#C63478,K26=#D8C7D1,K27=#BD9DA1,K28=#B785A1,K29=#937A8D,K30=#E1BCE8,K31=#E69C79,K32=#D37C46,K33=#C1444A,K34=#CD9391,K35=#F7B4C6,K36=#FDC0D0,K37=#F67E66,K38=#E698AA,K39=#E54B4F,L01=#D50D21,L02=#F92F83,L03=#FD8324,L04=#F8EC31,L05=#35C75B,L06=#238891,L07=#19779D,L08=#1A60C3,L09=#9A56B4,L10=#FFDB4C,L11=#FFEBFB,L12=#D8D5CE,L13=#55514C,L14=#FFFFFF,M01=#FCF7F8,M02=#B0A9AC,M03=#AFDCAB,M04=#FEA49F,M05=#EE8C3E,M06=#5FD0A7,M07=#EB9270,M08=#F0D958,M09=#D9D9D9,M10=#D9C7EA,M11=#F3ECC9,M12=#E6EEF2,M13=#AACBEF,M14=#337680,M15=#668575,M16=#FEBF45,M17=#FEA324,M18=#FEB89F,M19=#FFFEEC,M20=#ECBEBF,M21=#FEBECF,M22=#E4A89F,M23=#A56268,N01=#FD6FB4,N02=#FEB481,N03=#D7FAA0,N04=#8BDBFA,N05=#E987EA,S1=#9FE4DF,S10=#FEB872,S11=#F3C1C0,S12=#C9675E,S13=#D293BE,S14=#EA8CB1,S15=#9C87D6,S2=#77CEE9,S3=#3ECFCA,S4=#4A867A,S5=#7FCD9D,S6=#CDE55D,S7=#E8C7B4,S8=#AD6F3C,S9=#6C372F,W1=#FFFF00,W2=#FFEBFA,W3=#F2A5E8,W4=#E9EC91,W5=#76CEDE,Y01=#BCC6B8,Y02=#8AA386,Y03=#697D80,Y04=#E3D2BC,Y05=#D0CCAA,Y06=#B0A782,Y07=#B4A497,Y08=#B38281,Y09=#A58767,Y10=#C5B2BC,Y11=#9F7594,Y12=#644749,Y13=#D19066,Y14=#C77362,Y15=#757D78,Z01=#FFE4CC,Z02=#FFE2CE,Z03=#FCF9E0,Z04=#F2D9BA,Z05=#FFC4AA,Z06=#F4C3A5,Z07=#E0C593,Z08=#E1B383,Z09=#E6B483,Z10=#EDB045,Z11=#E99C17,Z12=#E07935,Z13=#FFC890,Z14=#B7714A,Z15=#D98C39,Z16=#78524B,Z17=#8D614C,Z18=#9D5B3E,Z19=#A94023,Z20=#8A4526,Z21=#943630,Z22=#753832,Z23=#5A2121,Z24=#B88558","artkal":"C01=#FFFFFF,C02=#000000,C03=#FF8200,C04=#FF7F41,C05=#E4002B,C06=#BA0C2F,C07=#EF95CF,C08=#F04E98,C09=#E24585,C10=#F8E08E,C11=#FFC72C,C12=#9BE198,C13=#93C90E,C14=#009A44,C15=#007862,C16=#FF6A39,C17=#FF5C39,C18=#8DC8E8,C19=#56B7E6,C20=#0090DA,C21=#004EA8,C22=#F7CED7,C23=#EAA794,C24=#EFD19F,C25=#A388D8,C26=#9569BE,C27=#483698,C28=#C67D30,C29=#A4493D,C30=#93262C,C31=#A37F74,C32=#683431,C33=#A7A8AA,C34=#888B8D,C35=#A09F9D,C36=#E68699,C37=#0067B9,C38=#418FDE,C39=#A4DBE8,C40=#E1D555,C41=#FBDB65,C42=#FFC845,C43=#A50034,C44=#FF808B,C45=#4A7C68,C46=#F0EC74,C47=#ECC3B2,C48=#FFB549,C49=#EC86D0,C50=#C5B4E3,C51=#F5E1A4,C52=#5949A7,C53=#C4D600,C54=#00B2A9,C55=#6CC24A,C56=#97999B,C57=#D50032,C58=#2C2D65,C59=#861F41,C60=#BBDDE6,C61=#F1E6B2,C62=#FF585D,C63=#F1A7DC,C64=#CE0058,C65=#E3775E,C66=#F67599,C67=#B14EB5,C68=#62B5E5,C69=#333F48,C70=#183028,C71=#FFA300,C72=#FFB25B,C73=#B86125,C74=#D5A286,C75=#AA8066,C76=#FF6D6A,C77=#B04A5A,C78=#862633,C79=#99D6EA,C80=#00968F,C81=#48A9C5,C82=#009CBD,C83=#0085AD,C84=#ABAD23,C85=#999B30,C86=#008522,C87=#D9D9D6,C88=#C8C9C7,C89=#B1B3B3,C90=#53565A,C91=#D69A2D,C92=#F1C6A7,C93=#DCA59C,C94=#F18070,C95=#FA9370,C96=#EA7600,C97=#6CACE4,C98=#71C5E8,C99=#63B1BC,C100=#00A3E1,C101=#0076CF,C102=#0057B8,C103=#007D9B,C104=#007D8A,C105=#006A8E,C106=#007096,C107=#D5CB9F,C108=#CFC493,C109=#C0B561,C110=#998542,C111=#897630,C112=#CAC7A7,C113=#BFBB98,C114=#B0AA7E,C115=#899064,C116=#7A7256,C117=#5B792F,C118=#9CDBD9,C119=#7AE1BF,C120=#77C19A,C121=#00B467,C122=#37C400,C123=#257226,C124=#008675,C125=#007367,C126=#DFC8E7,C127=#D48BC8,C128=#EABEDB,C129=#DD74A1,C130=#C1A0DA,C131=#FB637E,C132=#C800A1,C133=#87189D,C134=#AAB7E8,C135=#B9B7E7,C136=#7BA2E1,C137=#5F8DDA,C138=#5576D1,C139=#485CC7,C140=#476ACD,C141=#365ABD,C142=#3448AA,C143=#002D72,C144=#E9E186,C145=#A6192E,C146=#86C8BC,C147=#866761,C148=#EFDBB2,C149=#8B84D7,C150=#3E4827,C151=#C0AEE4,C152=#C2BDE0,C153=#F3CFB3,C154=#C58B68,C155=#63666A,C156=#4B4F54,C157=#1D252D,CE01=#D1DDE6,CE02=#9BB8D3,CE03=#6AD1E3,CE04=#03C1AA,CE05=#2CD5C4,CE06=#147BD1,CE07=#BFA5B8,CE08=#9B7793,CE09=#693C5E,CE10=#C964CF,CE11=#AD1AAC,CE12=#FFC27B,CE13=#E6A65D,CE14=#D38235,CE15=#C16C18,CE16=#F5B6CD,CE17=#5D2A2C,CG01=#B2B9BF,CG02=#BEA6BA,CG03=#62B6D8,CG04=#8985C1,CG05=#CB9D96,CG06=#8ABA96,CG07=#94637F,CP01=#8ECAB2,CP02=#CD8F75,CP03=#CBA16C,CP04=#BC8DA4,CP05=#8A506A,CP06=#3063A3,CP07=#3E5694,CT01=#C6C6D2,CT02=#E664A6,CT03=#F6875C,CT04=#C4C764,CT05=#32B195,CT06=#757DD1,CT07=#4EB1DC,CT08=#5688A0,CT09=#6B849D,MA1=#FFF6D4,MA2=#F6F9E5,MA3=#FFFBAA,MA4=#FFDF58,MA5=#FECF4D,MA6=#FFA80C,MA7=#FF8837,MA8=#EAC431,MA9=#F1AA8F,MA10=#FF8F42,MA11=#FFE1A1,MA12=#F4B39C,MA13=#FFB100,MA14=#FF6510,MA15=#DAF05C,MA16=#F9FBBE,MA17=#FFD976,MA18=#FFCA9A,MA19=#EC7A92,MA20=#E5BE55,MA21=#FFE596,MA22=#F7E898,MA23=#F0CBB1,MA24=#F5FCD1,MA25=#F6D487,MA26=#FFCB4B,MB1=#D2E318,MB2=#79CD41,MB3=#82D7A1,MB4=#65DF4F,MB5=#5FC873,MB6=#49D1AE,MB7=#009696,MB8=#08774F,MB9=#183823,MB10=#83CFC3,MB11=#5A6A27,MB12=#045F45,MB13=#E2FFB3,MB14=#9DD12E,MB15=#254B3C,MB16=#D0FCAD,MB17=#8CA12A,MB18=#D2D958,MB19=#49BCA9,MB20=#E8FDEC,MB21=#188B81,MB22=#0C5C5B,MB23=#3D461B,MB24=#EAFCB6,MB25=#538771,MB26=#8A7A40,MB27=#D2DEB6,MB28=#9FF4C2,MB29=#BBD747,MB30=#F5FFE6,MB31=#BFE1C2,MB32=#9FBA5C,MC1=#D5E3DE,MC2=#BBF1F4,MC3=#73C0DF,MC4=#33B3E1,MC5=#00A3CA,MC6=#58A0D9,MC7=#0588CC,MC8=#005F9E,MC9=#086FB9,MC10=#52B4E0,MC11=#00A9B9,MC12=#1C375A,MC13=#CEE0F0,MC14=#EBF5F4,MC15=#00AAAD,MC16=#004C7D,MC17=#5BD4F6,MC18=#36515C,MC19=#0F909D,MC20=#0084B7,MC21=#DDECFA,MC22=#84BAC2,MC23=#CBDBDB,MC24=#88BDE2,MC25=#B3ECE0,MC26=#3E9EBF,MC27=#E9F0F3,MC28=#C2CDE3,MC29=#586B8F,MD1=#7292E2,MD2=#6E8CCC,MD3=#13419A,MD4=#1E3175,MD5=#B850B2,MD6=#AD92E9,MD7=#5F2D91,MD8=#D7CDF1,MD9=#BDB2E6,MD10=#251B58,MD11=#A2BBE7,MD12=#CF8BBE,MD13=#B80096,MD14=#A137A7,MD15=#4A388A,MD16=#DCE8F6,MD17=#AECEF0,MD18=#B38EDB,MD19=#E8D2EA,MD20=#B460C3,MD21=#842A94,MD22=#4B5E9E,MD23=#D6D2E2,MD24=#7776D1,MD25=#3837A8,MD26=#DDC8DD,ME1=#FDD6C9,ME2=#FFD8F4,ME3=#FFA0C3,ME4=#F67AAB,ME5=#DA5B95,ME6=#FF4B78,ME7=#9E156B,ME8=#FFE1E6,ME9=#F378CA,ME10=#BE316D,ME11=#FFE8DA,ME12=#FFA5C6,ME13=#B53883,ME14=#FFDDC7,ME15=#E5C6D0,ME16=#F9F2EB,ME17=#E7DCE6,ME18=#FFD3E6,ME19=#FFD5EC,ME20=#F3DCE8,ME21=#BD9CA3,ME22=#C578A5,ME23=#A37A9B,ME24=#F4E8FF,MF1=#FF7F67,MF2=#FF5D46,MF3=#E3564A,MF4=#C7270D,MF5=#BE0A27,MF6=#83411E,MF7=#730037,MF8=#AB0022,MF9=#DE7995,MF10=#AB613C,MF11=#5C2929,MF12=#F34461,MF13=#C64239,MF14=#FFA5BB,MF15=#BC0018,MF16=#FFD7CB,MF17=#F19D8A,MF18=#DC7B45,MF19=#C74651,MF20=#D8A89E,MF21=#EB9DB9,MF22=#FFD4D4,MF23=#EA8474,MF24=#F7C1C5,MF25=#FC5768,MG1=#FFE7C8,MG2=#FFD6C3,MG3=#EEB694,MG4=#D9A58C,MG5=#F49630,MG6=#F19937,MG7=#AC745B,MG8=#694A42,MG9=#F7CC9D,MG10=#C7832F,MG11=#D3C391,MG12=#E6B986,MG13=#C67B4F,MG14=#8D6242,MG15=#F6F7E2,MG16=#F2E7D7,MG17=#786562,MG18=#FEF5EB,MG19=#F0AB47,MG20=#AE6949,MG21=#BF8C6E,MH1=#FFFFFF,MH2=#FFFFFF,MH3=#9B9B9B,MH4=#6D6D6D,MH5=#4D4D4D,MH6=#3A3A3A,MH7=#000000,MH8=#FFF0F1,MH9=#E3E6DF,MH10=#E2E0E7,MH11=#BCB8B5,MH12=#F7F3E1,MH13=#EADDC8,MH14=#B8C8C5,MH15=#99ABAC,MH16=#444236,MH17=#FAFBF5,MH18=#FEFEEE,MH19=#FBF2E4,MH20=#9EAEAD,MH21=#FDFFF2,MH22=#EDEDE7,MH23=#B4B8A7,MM1=#AEBBA8,MM2=#729376,MM3=#6A8890,MM4=#BEB39D,MM5=#B8B78C,MM6=#B2AC93,MM7=#BC9F94,MM8=#968381,MM9=#B39D88,MM10=#B796A3,MM11=#B096B9,MM12=#685951,MM13=#C79582,MM14=#CA694F,MM15=#929FA9","manman":"A1=#FF9280,A2=#F73D48,A3=#EF4D3E,A4=#F92B40,A5=#F36328,A6=#911932,A7=#FCC1DD,A10=#F1559F,A20=#F893BF,A11=#EC4072,A12=#C63674,A13=#FDDBE9,A14=#E575C7,A15=#E0677A,A16=#D33997,A17=#BB0126,A18=#FDA276,A19=#F7DAD4,A21=#B5026A,A22=#F8516D,A23=#F5C9CA,A24=#F45C45,A25=#FCADB2,B1=#FCFED6,B2=#FCFF92,B3=#F7EC5C,B4=#F0D83A,B5=#FDA951,B6=#FA8C4F,B7=#E7B34E,B8=#F3A014,B9=#DA8C42,B10=#FDD94D,B11=#F99C5F,B12=#F47E36,B13=#FEC667,B14=#F85842,B15=#FBF65E,C1=#DFF139,C2=#64F343,C3=#5FDF34,C4=#39E158,C5=#1D9E54,C6=#2A5037,C7=#9FF685,C8=#FFFEE4,C9=#64E0A4,C10=#3FAE7C,C11=#9AD1BA,C12=#627032,C13=#1A6E3D,C14=#C8E87D,C15=#ACE84C,C16=#305335,C17=#C0ED9C,C18=#9EB33E,C19=#E6ED4F,D1=#ABF8FE,D2=#9EE0F8,D3=#44CDFB,D4=#54A7E9,D5=#ACB7EF,D6=#868DD3,D7=#06ABE3,D8=#3977CC,D9=#0F52BD,D10=#3653AF,D11=#162C7E,D12=#8758A9,D13=#B34EC6,D14=#B37BDC,D15=#301A49,D16=#E3D2FE,D17=#D6BAF5,D18=#2F1E8E,D19=#BCBAE2,D20=#DC99CE,D21=#B5038F,D22=#882893,D23=#E2E4F0,D24=#C7D3F9,D25=#3DBBE3,D26=#CDE7FE,D27=#9A64B8,D28=#1E334E,D29=#21C5C4,D30=#D6FDFC,D31=#1858A2,D32=#02D1F3,D33=#D8C2D9,D34=#9C34AD,D35=#940595,D36=#213244,DH1=#383995,DH10=#CAEDCF,DH11=#1B1213,DH12=#343B1A,DH13=#A5452F,DH14=#BEDDFC,DH15=#26B78E,DH2=#176268,DH3=#DD7D41,DH4=#98A6A6,DH5=#FFE4D6,DH6=#188690,DH7=#0A4241,DH8=#D50527,DH9=#1A70A9,E1=#F6D4CB,E2=#FAF5CD,E3=#FFE4D3,E4=#FCC6AC,E5=#F1C4A5,E6=#DCB387,E7=#98503A,A8=#F6BDE8,E8=#713D2F,A9=#E9639E,E9=#913635,E10=#E4B685,E11=#FEDB99,E12=#DAC898,E13=#FEC993,E14=#8B684C,E15=#874628,E16=#592323,E17=#B2714B,E18=#FDF6EE,E19=#F6F8E3,E20=#F2D8C1,E21=#FAD4BF,E22=#79544E,E23=#F4EFD1,F1=#FBFBFB,F2=#FFFFFF,F3=#B4B4B4,F4=#878787,F5=#464648,F6=#2C2C2C,F7=#010101,F8=#E7D6DC,F9=#ECEAEB,F10=#EFEDEE,F11=#CDCDCD,F12=#CED7D4,G2=#CACADA,G3=#F3F6A9,G4=#FFD785,G5=#FEC832,G6=#E3FBB1,G7=#B2E694,G8=#DEBEE5,G9=#E09DAF,G10=#E84854,G11=#9B9C94,G12=#92AD60,G1=#F8FBE6,G13=#BDCEED,G14=#BDCEE8,G15=#364A89,IC1=#FCFFF8,IC2=#FBF4EC,IC3=#6BB1BB,IC04=#FEFF97,IC5=#E8FAA6,IC6=#F0EEEF,IC7=#F7E3EC,IC8=#FADBF8,IC9=#FDE173,IC10=#F8C0A9,IC11=#F2EEE5,IC12=#F6BBD1,IC13=#FBCBDB,IC14=#FCBF80,IC15=#FD7E77,N5=#3349C3,Q2=#C09DA4,Q3=#937D8A,Q4=#B58B9F,Q5=#BE454A,Q6=#F9D66E,Q7=#907C35,Q8=#B38561,Q9=#E89B7D,Q10=#D07E4A,Q11=#C8E2F9,Q12=#96A09F,Q13=#4E846D,Q1=#D7C6CE,Q14=#768AE1,Q15=#4950C2,R01=#D6C6EB,R02=#F7C3D0,R03=#F2BBC6,R04=#C69495,R05=#EC806D,R06=#EDF878,R07=#FAE393,R08=#E1C9BD,R09=#C6DF5F,R10=#D0E0AF,R11=#9EE5BB,R12=#42ADD1,R13=#7EC5F9,R14=#A9E8E0,R15=#D0DEEF,YX1=#B0AA86,YX10=#A88764,YX11=#BBC6B6,YX12=#909994,YX13=#B0A796,YX14=#AE8082,YX15=#E0D4BC,YX2=#697E80,YX3=#C37463,YX4=#9D7693,YX5=#644B51,YX6=#D0CBAE,YX7=#747D7A,YX8=#C79266,YX9=#C6B2BB,Y1=#FF6FB7,Y2=#FDB583,Y3=#D8FCA4,Y4=#91DAFB,Y5=#E987EA,L2=#F8DA54,L6=#FCFDFF,L7=#56534E,N1=#F13484,N2=#FB852B,N3=#F8ED33,N4=#32C958,P1=#F9F9F9,P2=#ABABAB,P3=#EB903F,P4=#B6DBAF,P5=#FEA2A3,P6=#E79273,P7=#ECDB59,P8=#63CEA2,P9=#F1E9D4,P10=#FFDEE9,P11=#FEBDA7,P12=#E9EDEE,P13=#DBD9DA,P14=#FDC24E,P15=#FCBFD1,P16=#DFAAA4,P17=#ADCBF1,P18=#DBC7EA,P19=#FDA42E,P20=#E8BEC2,P21=#A3656A,P22=#337BAD,P23=#668575,T1=#D40E1F,T2=#945AB1,T3=#1960C8,T4=#1EBA93,T5=#1D779C,T6=#FCECF7,T7=#D8D4D3,S1=#A3E7DC,S2=#78CEE7,S3=#3FCDCE,S4=#7DCA9C,S5=#4E8379,S6=#E3CCBA,S7=#F3C6C0,S8=#D093BC,S9=#D093BC,S10=#9F85CF,S11=#C8E664,S12=#F6BB6F,S13=#A17140,S14=#C76A62,S15=#6B372C","panpan":"65=#FAF5CD,2=#FCFED6,28=#FCFF92,3=#F7EC5C,74=#F0D83A,29=#FDA951,4=#FA8C4F,88=#FDD94D,90=#F99C5F,89=#F47E36,100=#FEDB99,99=#FDA276,131=#FEC667,138=#F85842,150=#FBF65E,216=#FEFF97,213=#FDE173,223=#FCBF80,218=#FD7E77,242=#F9D66E,276=#FAE393,270=#EDF878,274=#E1C9BD,288=#F3F6A9,289=#FFD785,290=#FEC832,168=#BBC6B6,172=#909994,166=#697E80,167=#E0D4BC,174=#D0CBAE,169=#B0AA86,171=#B0A796,177=#AE8082,170=#A88764,164=#C6B2BB,176=#9D7693,173=#644B51,175=#C79266,165=#C37463,178=#747D7A,69=#FCFDFF,71=#F9F9F9,55=#ABABAB,73=#B6DBAF,72=#FEA2A3,56=#EB903F,157=#63CEA2,159=#E79273,158=#ECDB59,195=#DBD9DA,187=#DBC7EA,185=#F1E9D4,190=#E9EDEE,193=#ADCBF1,183=#337BAD,184=#668575,182=#FDC24E,179=#FDA42E,194=#FEBDA7,186=#FFDEE9,188=#FCBFD1,180=#E8BEC2,189=#DFAAA4,181=#A3656A,67=#D40E1F,24=#F13484,22=#FB852B,21=#F8ED33,23=#32C958,37=#1D779C,68=#1960C8,70=#945AB1,156=#F8DA54,151=#FCECF7,160=#D8D4D3,152=#56534E,231=#A3E7DC,237=#78CEE7,238=#3FCDCE,233=#4E8379,235=#7DCA9C,227=#C8E664,230=#E3CCBA,234=#A17140,226=#6B372C,224=#F6BB6F,228=#F3C6C0,225=#C76A62,229=#D093BC,232=#E58EAE,236=#9F85CF,59=#FF6FB7,60=#FDB583,57=#D8FCA4,58=#91DAFB,61=#E987EA,254=#DAABB3,255=#D6AA87,256=#C1BD8D,257=#96B69F,258=#849DC6,259=#94BFE2,260=#E2A9D2,261=#AB91C0,48=#DFF139,33=#64F343,26=#9FF685,66=#5FDF34,39=#39E158,11=#64E0A4,44=#3EAE7C,10=#1D9B54,79=#2A5037,96=#9AD1BA,97=#627032,106=#1A6E3D,128=#C8E87D,129=#ACE84C,130=#305335,141=#C0ED9C,142=#9EB33E,147=#E6ED4F,191=#26B78E,192=#CAEDCF,207=#176268,206=#0A4241,205=#343B1A,222=#E8FAA6,240=#4E846D,248=#907C35,262=#D0E0AF,269=#9EE5BB,268=#C6DF5F,285=#E3FBB1,286=#B2E694,287=#92AD60,64=#F0FEE4,30=#ABF8FE,63=#9EE0F8,77=#44CDFB,34=#06ABE3,25=#54A7E9,9=#3977CC,52=#0F52BD,42=#3349C3,121=#3DBBE3,122=#2ADED3,120=#1E334E,140=#CDE7FE,139=#D6FDFC,143=#21C5C4,149=#1858A2,163=#02D1F3,196=#213244,202=#18869D,197=#1A70A9,212=#BEDDFC,239=#6BB1BB,263=#C8E2F9,267=#7EC5F9,271=#A9E8E0,265=#42ADD1,279=#D0DEF9,280=#BDCEE8,281=#364A89,46=#ACB7EF,36=#868DD3,8=#3653AF,75=#162C7E,32=#B34EC6,27=#B37BDC,7=#8758A9,94=#E3D2FE,93=#D6BAF5,92=#301A49,105=#BCBAE2,104=#DC99CE,103=#B5038F,102=#882893,101=#2F1E8E,118=#E2E4F0,119=#C7D3F9,124=#9A64B8,153=#D8C2D9,161=#9C34AD,162=#940595,198=#383995,217=#EADBF8,244=#768AE1,249=#4950C2,273=#D6C6EB,18=#F6D4CB,38=#FCC1DD,62=#F6BDE8,6=#E9639E,40=#F1559F,20=#EC4072,41=#C63674,84=#FDDBE9,98=#E575C7,83=#D33997,125=#F7DAD4,126=#F893BF,127=#B5026A,137=#FAD4BF,135=#F5C9CA,221=#FBF4EC,220=#F7E3EC,210=#FBC8DB,215=#F6BBD1,241=#D7C6CE,253=#C09DA4,252=#B58B9F,250=#937D8A,282=#DEBEE5,35=#FF9280,31=#F73D4B,53=#EF4D3E,54=#F92B40,5=#E30328,16=#913635,47=#911932,81=#BB0126,82=#E0677A,116=#874628,117=#592323,136=#F8516D,148=#F45C45,154=#FCADB2,204=#D50527,211=#F8C0A9,245=#E89B7D,246=#D07E4A,243=#BE454A,275=#C69495,266=#F2B8C6,272=#F7C3D0,264=#EC806D,283=#E09DAF,284=#E84854,76=#FFE4D3,49=#FCC6AC,80=#F1C4A5,19=#DCB387,43=#E7B34E,50=#E3A014,17=#985C3A,12=#713D2F,91=#E4B685,87=#DA8C42,112=#DAC898,113=#FEC993,115=#B2714B,114=#8B684C,133=#F6F8E3,134=#F2D8C1,144=#79544E,203=#FFE4D6,208=#DD7D41,199=#A5452F,247=#B38561,15=#FBFBFB,1=#000000,13=#B4B4B4,78=#878787,45=#464648,51=#2C2C2C,14=#010101,85=#E7D6DC,95=#EFEDEE,86=#ECEAEB,123=#CDCDCD,132=#FDF6EE,145=#F4EFD1,146=#CED7D4,201=#98A6A6,200=#1B1213,214=#F0EEEF,219=#FCFFF8,209=#F2EEE5,251=#96A09F,291=#F8FBE6,277=#CACAD2,278=#9B9C94","mixiaowo":"77=#FAF5CD,2=#FCFED6,28=#FCFF92,3=#F7EC5C,79=#F0D83A,29=#FDA951,4=#FA8C4F,98=#FDD94D,97=#F99C5F,96=#F47E36,109=#FEDB99,110=#FDA276,116=#FEC667,135=#F85842,150=#FBF65E,216=#FEFF97,213=#FDE173,208=#FCBF80,218=#FD7E77,242=#F9D66E,261=#FAE393,255=#EDF878,259=#E1C9BD,273=#F3F6A9,274=#FFD785,275=#FEC832,168=#BBC6B6,172=#909994,166=#697E80,167=#E0D4BC,159=#D0CBAE,169=#B0AA86,171=#B0A796,162=#AE8082,170=#A88764,164=#C6B2BB,161=#9D7693,173=#644B51,160=#C79266,165=#C37463,163=#747D7A,51=#FCFDFF,62=#F9F9F9,69=#ABABAB,66=#B6DBAF,64=#FEA2A3,63=#EB903F,65=#63CEA2,68=#E79273,67=#ECDB59,178=#DBD9DA,187=#DBC7EA,185=#F1E9D4,190=#E9EDEE,176=#ADCBF1,183=#337BAD,184=#668575,182=#FDC24E,179=#FDA42E,177=#FEBDA7,186=#FFDEE9,180=#FCBFD1,188=#E8BEC2,189=#DFAAA4,181=#A3656A,52=#D40E1F,24=#F13484,22=#FB852B,21=#F8ED33,23=#32C958,55=#1EBA93,37=#1D779C,54=#1960C8,56=#945AB1,53=#F8DA54,151=#FCECF7,157=#D8D4D3,152=#56534E,231=#A3E7DC,224=#78CEE7,225=#3FCDCE,233=#4E8379,222=#7DCA9C,227=#C8E664,230=#E3CCBA,221=#A17140,226=#6B372C,219=#F6BB6F,228=#F3C6C0,220=#C76A62,229=#D093BC,232=#E58EAE,223=#9F85CF,59=#FF6FB7,60=#FDB583,57=#D8FCA4,58=#91DAFB,61=#E987EA,ZG1=#DAABB3,ZG2=#D6AA87,ZG3=#C1BD8D,ZG4=#96B69F,ZG5=#849DC6,ZG6=#94BFE2,ZG7=#E2A9D2,ZG8=#AB91C0,48=#DFF139,33=#64F343,26=#9FF685,78=#5FDF34,39=#39E158,11=#64E0A4,44=#3EAE7C,10=#1D9B54,84=#2A5037,100=#9AD1BA,99=#627032,111=#1A6E3D,119=#C8E87D,117=#ACE84C,122=#305335,133=#C0ED9C,141=#9EB33E,147=#E6ED4F,174=#26B78E,175=#CAEDCF,194=#176268,193=#0A4241,192=#343B1A,207=#E8FAA6,240=#4E846D,248=#907C35,262=#D0E0AF,254=#9EE5BB,253=#C6DF5F,270=#E3FBB1,271=#B2E694,272=#92AD60,76=#F0FEE4,30=#ABF8FE,75=#9EE0F8,82=#44CDFB,34=#06ABE3,25=#54A7E9,9=#3977CC,71=#0F52BD,42=#3349C3,130=#3DBBE3,113=#2ADED3,120=#1E334E,142=#CDE7FE,136=#D6FDFC,132=#21C5C4,149=#1858A2,156=#02D1F3,196=#213244,202=#18869D,197=#1A70A9,212=#BEDDFC,239=#6BB1BB,263=#C8E2F9,252=#7EC5F9,256=#A9E8E0,250=#42ADD1,264=#D0DEF9,265=#BDCEE8,266=#364A89,46=#ACB7EF,36=#868DD3,8=#3653AF,80=#162C7E,32=#B34EC6,27=#B37BDC,7=#8758A9,89=#E3D2FE,90=#D6BAF5,91=#301A49,104=#BCBAE2,105=#DC99CE,106=#B5038F,107=#882893,108=#2F1E8E,126=#E2E4F0,128=#C7D3F9,125=#9A64B8,153=#D8C2D9,155=#9C34AD,158=#940595,198=#383995,217=#EADBF8,244=#768AE1,234=#4950C2,258=#D6C6EB,18=#F6D4CB,38=#FCC1DD,74=#F6BDE8,6=#E9639E,40=#F1559F,20=#EC4072,41=#C63674,103=#FDDBE9,95=#E575C7,94=#D33997,131=#F7DAD4,112=#F893BF,124=#B5026A,140=#FAD4BF,139=#F5C9CA,206=#FBF4EC,205=#F7E3EC,210=#FBC8DB,215=#F6BBD1,241=#D7C6CE,238=#C09DA4,237=#B58B9F,235=#937D8A,267=#DEBEE5,35=#FF9280,31=#F73D4B,72=#EF4D3E,73=#F92B40,5=#E30328,16=#913635,47=#911932,92=#BB0126,93=#E0677A,115=#874628,129=#592323,134=#F8516D,148=#F45C45,154=#FCADB2,191=#D50527,211=#F8C0A9,245=#E89B7D,246=#D07E4A,243=#BE454A,260=#C69495,251=#F2B8C6,257=#F7C3D0,249=#EC806D,268=#E09DAF,269=#E84854,81=#FFE4D3,49=#FCC6AC,85=#F1C4A5,19=#DCB387,43=#E7B34E,50=#E3A014,17=#985C3A,12=#713D2F,102=#E4B685,101=#DA8C42,118=#DAC898,127=#FEC993,114=#B2714B,123=#8B684C,143=#F6F8E3,138=#F2D8C1,137=#79544E,203=#FFE4D6,195=#DD7D41,199=#A5452F,247=#B38561,15=#FBFBFB,1=#FFFFFF,13=#B4B4B4,83=#878787,45=#464648,70=#2C2C2C,14=#010101,86=#E7D6DC,87=#EFEDEE,88=#ECEAEB,121=#CDCDCD,144=#FDF6EE,146=#F4EFD1,145=#CED7D4,201=#98A6A6,200=#1B1213,214=#F0EEEF,204=#FCFFF8,209=#F2EEE5,236=#96A09F,276=#F8FBE6,277=#CACAD2,278=#9B9C94"};
+
+/* Perler 是唯一带中英文名的色卡：'CODE=#HEX|中文名|English' */
+const PERLER_RAW = "P01=#F1F1F1|白色|White,P02=#E0DEA9|米白|Cream,P03=#ECD800|黄色|Yellow,P04=#ED6120|橙色|Orange,P05=#F01820|红色|Red,P06=#DD669B|泡泡糖粉|Bubblegum,P07=#604089|紫色|Purple,P08=#2B3F87|深蓝|Dark Blue,P09=#3370C0|浅蓝|Light Blue,P10=#1C753E|深绿|Dark Green,P11=#56BA9F|浅绿|Light Green,P12=#513931|棕色|Brown,P17=#8A8D91|灰色|Grey,P18=#2E2F32|黑色|Black,P20=#8C372C|铁锈红|Rust,P21=#815D34|浅棕|Light Brown,P33=#EEBAB2|蜜桃色|Peach,P35=#BC9371|棕褐|Tan,P38=#F22A7B|洋红|Magenta,P47=#DCE002|荧光黄|Neon Yellow,P48=#FF7700|荧光橙|Neon Orange,P49=#019E43|荧光绿|Neon Green,P50=#FF3991|荧光粉|Neon Pink,P52=#5390D1|粉蓝|Pastel Blue,P53=#76C882|粉绿|Pastel Green,P54=#8A72C1|粉紫|Pastel Lavender,P56=#FEF875|粉黄|Pastel Yellow,P57=#F1AA0C|切达黄|Cheddar,P58=#93C8D4|牙膏蓝|Toothpaste,P59=#FF3851|亮珊瑚|Hot Coral,P60=#A24B9C|梅紫|Plum,P61=#6CBE13|奇异果绿|Kiwi Lime,P62=#2B89C6|湖蓝|Turquoise,P63=#FF8285|腮红粉|Blush,P70=#647CBE|长春花蓝|Periwinkle Blue,P75=#BEC696|夜光绿|Glow Green,P79=#F6B3DD|浅粉|Light Pink,P80=#4FAD42|亮绿|Bright Green,P81=#EEE3CF|浅灰|Light Gray,P82=#AD98D4|薰衣草紫|Lavender,P83=#E44892|粉色|Pink,P85=#BB7634|金色|Gold,P88=#A53061|树莓红|Raspberry,P90=#D48437|奶油糖|Butterscotch,P91=#067C81|鹦鹉绿|Parrot Green,P92=#4D5156|深灰|Dark Grey,P93=#8297D9|蓝莓奶油|Blueberry Cream,P96=#801922|蔓越莓|Cranapple,P97=#BDDA01|仙人掌黄|Prickly Pear,P98=#E4B690|沙色|Sand,P100=#F97E79|珍珠珊瑚|Pearl Coral,P101=#7AAEA2|珍珠浅蓝|Pearl Light Blue,P102=#84B791|珍珠绿|Pearl Green,P103=#CAC033|珍珠黄|Pearl Yellow,P104=#D7A8A2|珍珠浅粉|Pearl Light Pink,P105=#777B81|银色|Silver,P179=#114938|松绿|Evergreen";
+
+function parsePalette(raw) {
+  return raw.split(',').map((s) => {
+    const [code, hex] = s.split('=');
+    return { code, hex, rgb: [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)], name: '', en: '' };
+  });
+}
+function parsePerler(raw) {
+  return raw.split(',').map((s) => {
+    const [code, rest] = s.split('=');
+    const [hex, name, en] = rest.split('|');
+    return { code, hex, rgb: [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)], name: name || '', en: en || '' };
+  });
+}
+
+const BRANDS = [
+  { id: 'mard', name: 'MARD', note: '291', colors: parsePalette(PAL_RAW.mard) },
+  { id: 'coco', name: 'COCO', note: '291', colors: parsePalette(PAL_RAW.coco) },
+  { id: 'artkal', name: 'Artkal', note: '418', colors: parsePalette(PAL_RAW.artkal) },
+  { id: 'manman', name: 'Manman', note: '278', colors: parsePalette(PAL_RAW.manman) },
+  { id: 'panpan', name: 'Panpan', note: '289', colors: parsePalette(PAL_RAW.panpan) },
+  { id: 'mixiaowo', name: 'Mixiaowo', note: '290', colors: parsePalette(PAL_RAW.mixiaowo) },
+  { id: 'perler', name: 'Perler', note: '57', colors: parsePerler(PERLER_RAW) }
+];
+
+/**
+ * 近似色距离（redmean 加权欧氏距离）：人眼对绿色更敏感，
+ * 纯 RGB 欧氏距离会把「偏灰的红」和「偏灰的橙」混在一起，加权后更贴近观感。
+ */
+function colorDistance(r1, g1, b1, r2, g2, b2) {
+  const rMean = (r1 + r2) / 2;
+  const dr = r1 - r2, dg = g1 - g2, db = b1 - b2;
+  return (2 + rMean / 256) * dr * dr + 4 * dg * dg + (2 + (255 - rMean) / 256) * db * db;
+}
+
+/* ---------- 2. 状态 ---------- */
+const S = {
+  brand: 'mard',
+  width: 50,
+  brightness: 0,
+  dither: 'none',
+  maxColors: 24,
+  shape: 'circle',
+  showGrid: true,
+  printCodes: true,
+  lang: 'zh'
+};
+let img = null;          // 已加载的源图
+let grid = new Int16Array(0); // 调色板下标，-1 = 留空（透明）
+let gridH = 0;
+let legend = [];         // [{code,hex,name,en,count}]
+let stats = null;        // {w,h,beads,transparent}
+let highlight = null;   // 高亮的色号
+let objectUrl = '';
+
+const pal = () => BRANDS.find((b) => b.id === S.brand).colors;
+const brandName = () => BRANDS.find((b) => b.id === S.brand).name;
+
+/** 最多颜色数档位：6/12/24/36 后逐级递增，封顶当前品牌色卡总色数 */
+function maxColorOptions() {
+  const max = pal().length;
+  const opts = [6, 12, 24, 36];
+  let v = 36, step = 12;
+  while (v < max) { v += step; step += 4; opts.push(v >= max ? max : v); }
+  if (opts[opts.length - 1] < max) opts.push(max);
+  return opts;
+}
+
+/* ---------- 3. 核心：生成图纸 ---------- */
+function generate() {
+  if (!img) return;
+  const colors = pal();
+  const w = S.width;
+  const h = Math.max(1, Math.round((S.width * img.naturalHeight) / img.naturalWidth));
+
+  const off = document.createElement('canvas');
+  off.width = w; off.height = h;
+  const ctx = off.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, 0, 0, w, h);
+  const data = ctx.getImageData(0, 0, w, h).data;
+
+  const bright = S.brightness;
+  const px = new Float32Array(w * h * 3);
+  const alpha = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    alpha[i] = data[i * 4 + 3];
+    if (alpha[i] >= 120) {
+      px[i * 3] = data[i * 4] + bright;
+      px[i * 3 + 1] = data[i * 4 + 1] + bright;
+      px[i * 3 + 2] = data[i * 4 + 2] + bright;
+    }
+  }
+  const clamp255 = (v) => (v < 0 ? 0 : v > 255 ? 255 : v);
+  const next = new Int16Array(w * h);
+  let transparent = 0;
+
+  if (S.dither === 'fs') {
+    // Floyd–Steinberg 误差扩散：右 7/16、左下 3/16、下 5/16、右下 1/16。透明像素不参与扩散
+    const spread = (x, y, f, er, eg, eb) => {
+      if (x < 0 || x >= w || y >= h) return;
+      const i = y * w + x;
+      if (alpha[i] < 120) return;
+      const j = i * 3;
+      px[j] += er * f; px[j + 1] += eg * f; px[j + 2] += eb * f;
+    };
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = y * w + x;
+        if (alpha[i] < 120) { next[i] = -1; transparent++; continue; }
+        const j = i * 3;
+        const r = clamp255(px[j]), g = clamp255(px[j + 1]), b = clamp255(px[j + 2]);
+        const idx = nearest(r, g, b, colors);
+        next[i] = idx;
+        spread(x + 1, y, 7 / 16, r - colors[idx].rgb[0], g - colors[idx].rgb[1], b - colors[idx].rgb[2]);
+        spread(x - 1, y + 1, 3 / 16, r - colors[idx].rgb[0], g - colors[idx].rgb[1], b - colors[idx].rgb[2]);
+        spread(x, y + 1, 5 / 16, r - colors[idx].rgb[0], g - colors[idx].rgb[1], b - colors[idx].rgb[2]);
+        spread(x + 1, y + 1, 1 / 16, r - colors[idx].rgb[0], g - colors[idx].rgb[1], b - colors[idx].rgb[2]);
+      }
+    }
+  } else {
+    for (let i = 0; i < w * h; i++) {
+      if (alpha[i] < 120) { next[i] = -1; transparent++; continue; }
+      const j = i * 3;
+      next[i] = nearest(clamp255(px[j]), clamp255(px[j + 1]), clamp255(px[j + 2]), colors);
+    }
+  }
+
+  /* 颜色超限时反复剔除用量最少的颜色，把它并入仍在使用的颜色。
+     存活集合只包含实际用到的颜色，避免被映射回已剔除的颜色导致超限 */
+  const alive = new Set();
+  for (const idx of next) if (idx >= 0) alive.add(idx);
+  while (alive.size > S.maxColors) {
+    const counts = new Map();
+    for (const idx of next) if (idx >= 0) counts.set(idx, (counts.get(idx) || 0) + 1);
+    let minIdx = -1, minCount = Infinity;
+    for (const [idx, count] of counts) if (count < minCount) { minCount = count; minIdx = idx; }
+    if (minIdx < 0) break;
+    alive.delete(minIdx);
+    for (let i = 0; i < next.length; i++) {
+      if (next[i] === minIdx) {
+        const j = i * 3;
+        next[i] = nearest(clamp255(px[j]), clamp255(px[j + 1]), clamp255(px[j + 2]), colors, alive);
+      }
+    }
+  }
+
+  grid = next; gridH = h;
+  const finalCounts = new Map();
+  let beads = 0;
+  for (const idx of next) if (idx >= 0) { finalCounts.set(idx, (finalCounts.get(idx) || 0) + 1); beads++; }
+  legend = [...finalCounts.entries()].map(([idx, count]) => ({ ...colors[idx], count })).sort((a, b) => b.count - a.count);
+  stats = { w, h, beads, transparent };
+  renderPreview();
+  renderLegend();
+}
+
+function nearest(r, g, b, palette, allowed = null) {
+  let best = 0, bestD = Infinity;
+  for (let i = 0; i < palette.length; i++) {
+    if (allowed && !allowed.has(i)) continue;
+    const p = palette[i].rgb;
+    const d = colorDistance(r, g, b, p[0], p[1], p[2]);
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+
+/* ---------- 4. 预览 ---------- */
+function renderPreview() {
+  const canvas = document.getElementById('preview');
+  if (!canvas || !grid.length) return;
+  const colors = pal();
+  const cell = 16;
+  const w = stats.w, h = gridH;
+  canvas.width = w * cell; canvas.height = h * cell;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const hlIdx = highlight ? colors.findIndex((p) => p.code === highlight) : -1;
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = grid[y * w + x];
+      const px = x * cell, py = y * cell;
+      if (idx < 0) {
+        ctx.fillStyle = '#e9edf2'; ctx.fillRect(px, py, cell, cell);
+        ctx.fillStyle = '#dde3ea';
+        ctx.fillRect(px + cell / 2, py, cell / 2, cell / 2);
+        ctx.fillRect(px, py + cell / 2, cell / 2, cell / 2);
+        continue;
+      }
+      ctx.globalAlpha = hlIdx >= 0 && idx !== hlIdx ? 0.16 : 1;
+      ctx.fillStyle = colors[idx].hex;
+      if (S.shape === 'square') {
+        ctx.fillRect(px, py, cell, cell);
+      } else {
+        ctx.fillRect(px, py, cell, cell);
+        ctx.beginPath(); ctx.arc(px + cell / 2, py + cell / 2, cell / 2 - 1.2, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(px + cell / 2 - 1.5, py + cell / 2 - 1.5, cell / 6, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255,255,255,.45)'; ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+  if (S.showGrid) {
+    ctx.strokeStyle = 'rgba(0,0,0,.14)'; ctx.lineWidth = 1;
+    for (let x = 0; x <= w; x++) {
+      ctx.globalAlpha = x % 10 === 0 ? 0.9 : 1;
+      ctx.beginPath(); ctx.moveTo(x * cell + 0.5, 0); ctx.lineTo(x * cell + 0.5, h * cell); ctx.stroke();
+    }
+    for (let y = 0; y <= h; y++) {
+      ctx.globalAlpha = y % 10 === 0 ? 0.9 : 1;
+      ctx.beginPath(); ctx.moveTo(0, y * cell + 0.5); ctx.lineTo(w * cell, y * cell + 0.5); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+function renderLegend() {
+  const ul = document.getElementById('legend');
+  ul.innerHTML = '';
+  legend.forEach((c) => {
+    const li = document.createElement('li');
+    li.className = highlight === c.code ? 'on' : '';
+    const label = S.lang === 'zh' ? (c.name || c.code) : (c.en || c.code);
+    li.innerHTML = '<span class="swatch" style="background:' + c.hex + '"></span>' +
+      '<span><span class="code">' + c.code + '</span>' +
+      (label !== c.code ? '<span class="name">' + label + '</span>' : '') +
+      '<span class="hex">' + c.hex + '</span></span>' +
+      '<span class="count">×' + c.count.toLocaleString() + '</span>';
+    li.onclick = () => { highlight = highlight === c.code ? null : c.code; renderPreview(); renderLegend(); };
+    ul.appendChild(li);
+  });
+  document.getElementById('legendPanel').hidden = legend.length === 0;
+  document.getElementById('legendTitle').textContent = t('legendTitle') + '（' + legend.length + '）';
+  document.getElementById('legendHint').textContent = t('legendHint').replace('{brand}', brandName());
+  document.getElementById('stats').textContent = stats.w + ' × ' + stats.h + ' ' + t('unitBead') + ' · ' +
+    legend.length + ' ' + t('unitColor') + ' · ' + t('totalBeads') + ' ' + stats.beads.toLocaleString() + ' ' + t('unitPiece');
+  document.getElementById('alphaTip').hidden = !stats.transparent;
+  const hlTip = document.getElementById('hlTip');
+  hlTip.hidden = !highlight;
+  if (highlight) hlTip.textContent = t('highlightTip').replace('{code}', highlight);
+}
+
+/* ---------- 5. 导出 ---------- */
+function codeTextColor(hex) {
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  return 0.299 * r + 0.587 * g + 0.114 * b > 150 ? 'rgba(0,0,0,.78)' : 'rgba(255,255,255,.88)';
+}
+
+/** 导出大图：豆子图 + 四边行列标尺（每 10 格加深）+ 格内色号，可选附色卡清单 */
+function drawExport(withLegend) {
+  const colors = pal();
+  const cell = 24, w = stats.w, h = gridH;
+  const margin = 20, ruler = 28, titleH = 44, legendCols = 3, rowH = 34;
+  const legendRows = withLegend ? Math.ceil(legend.length / legendCols) : 0;
+  const itemW = Math.min(300, Math.max(180, (w * cell + ruler * 2) / legendCols));
+  const legendW = Math.max(w * cell + ruler * 2, legendCols * itemW);
+  const originX = margin + ruler, originY = margin + titleH + ruler;
+  const canvas = document.createElement('canvas');
+  canvas.width = legendW + margin * 2;
+  canvas.height = originY + h * cell + ruler + (withLegend ? 66 + legendRows * rowH : margin);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#16181d';
+  ctx.font = 'bold 22px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.fillText(t('exportTitle') + ' ' + w + ' × ' + h + ' · ' + brandName(), margin, margin + 20);
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = grid[y * w + x];
+      const px = originX + x * cell, py = originY + y * cell;
+      if (idx < 0) { ctx.fillStyle = '#f2f4f7'; ctx.fillRect(px, py, cell, cell); continue; }
+      const c = colors[idx];
+      ctx.fillStyle = c.hex;
+      ctx.beginPath(); ctx.arc(px + cell / 2, py + cell / 2, cell / 2 - 1, 0, Math.PI * 2); ctx.fill();
+      if (S.printCodes) {
+        ctx.fillStyle = codeTextColor(c.hex);
+        ctx.font = 'bold 9px Consolas,monospace';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(c.code, px + cell / 2, py + cell / 2 + 0.5);
+        ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+      }
+    }
+  }
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= w; x++) {
+    ctx.strokeStyle = x % 10 === 0 ? 'rgba(0,0,0,.4)' : 'rgba(0,0,0,.18)';
+    ctx.beginPath(); ctx.moveTo(originX + x * cell + 0.5, originY); ctx.lineTo(originX + x * cell + 0.5, originY + h * cell); ctx.stroke();
+  }
+  for (let y = 0; y <= h; y++) {
+    ctx.strokeStyle = y % 10 === 0 ? 'rgba(0,0,0,.4)' : 'rgba(0,0,0,.18)';
+    ctx.beginPath(); ctx.moveTo(originX, originY + y * cell + 0.5); ctx.lineTo(originX + w * cell, originY + y * cell + 0.5); ctx.stroke();
+  }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (let x = 0; x < w; x++) {
+    const cx = originX + x * cell + cell / 2, major = (x + 1) % 10 === 0;
+    ctx.fillStyle = major ? '#2563eb' : '#8a8f98';
+    ctx.font = major ? 'bold 10px Consolas,monospace' : '10px Consolas,monospace';
+    ctx.fillText(String(x + 1), cx, originY - ruler / 2);
+    ctx.fillText(String(x + 1), cx, originY + h * cell + ruler / 2);
+  }
+  for (let y = 0; y < h; y++) {
+    const cy = originY + y * cell + cell / 2, major = (y + 1) % 10 === 0;
+    ctx.fillStyle = major ? '#2563eb' : '#8a8f98';
+    ctx.font = major ? 'bold 10px Consolas,monospace' : '10px Consolas,monospace';
+    ctx.textAlign = 'right'; ctx.fillText(String(y + 1), originX - 5, cy);
+    ctx.textAlign = 'left'; ctx.fillText(String(y + 1), originX + w * cell + 5, cy);
+  }
+  ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+
+  if (withLegend) {
+    let ly = originY + h * cell + ruler + 40;
+    ctx.fillStyle = '#16181d';
+    ctx.font = 'bold 18px "PingFang SC","Microsoft YaHei",sans-serif';
+    ctx.fillText(t('legendTitle') + '（' + legend.length + '，' + t('sortedByUsage') + '）', margin, ly);
+    ly += 20;
+    ctx.font = '14px "PingFang SC","Microsoft YaHei",sans-serif';
+    legend.forEach((c, i) => {
+      const col = i % legendCols, row = Math.floor(i / legendCols);
+      const x = margin + col * itemW, y = ly + row * rowH;
+      ctx.fillStyle = c.hex; ctx.fillRect(x, y, 20, 20);
+      ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.strokeRect(x + 0.5, y + 0.5, 20, 20);
+      ctx.fillStyle = '#16181d';
+      const nm = S.lang === 'zh' ? (c.name || '') : (c.en || '');
+      ctx.fillText(c.code + (nm ? ' ' + nm : '') + ' ' + c.hex + ' ×' + c.count, x + 28, y + 15);
+    });
+  }
+  return canvas;
+}
+
+function downloadCanvas(canvas, filename) {
+  const a = document.createElement('a');
+  a.download = filename;
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+}
+
+function exportPng(withLegend) {
+  if (!stats) return;
+  const c = drawExport(withLegend);
+  downloadCanvas(c, 'beadforge_' + brandName() + '_' + stats.w + 'x' + stats.h + (withLegend ? '_legend' : '') + '.png');
+}
+
+function exportCsv() {
+  if (!stats) return;
+  const lines = [
+    [t('csvBrand'), t('csvCode'), t('csvName'), t('csvHex'), t('csvCount')].join(','),
+    ...legend.map((c) => [brandName(), c.code, (S.lang === 'zh' ? c.name : c.en) || '', c.hex, c.count].join(',')),
+    '',
+    [t('csvSize'), stats.w + '×' + stats.h, '', t('csvTotal') + stats.beads, ''].join(',')
+  ];
+  const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.download = 'beadforge_' + brandName() + '_' + stats.w + 'x' + stats.h + '.csv';
+  a.href = URL.createObjectURL(blob);
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/* ---------- 6. 国际化 ---------- */
+const I18N = {
+  zh: {
+    tagline: '图片转拼豆图纸',
+    lead: '上传一张图片，自动按 MARD / COCO / Perler 等品牌标准色卡转换成拼豆像素图纸：可调宽度、亮度补偿、抖动，导出带行列标尺与袋装色号的 PNG 和颜色清单 CSV。全部在浏览器本地完成，图片不会上传。',
+    dropTitle: '点击选择图片，或拖拽 / 粘贴（Ctrl+V）到此处',
+    dropSub: '支持 JPG / PNG / WebP　·　图片仅在浏览器本地处理',
+    brand: '色卡品牌',
+    width: '图纸宽度（豆子数）：',
+    brightness: '亮度补偿：',
+    brightnessHint: '拼豆成品常偏暗，照片建议 +10 ~ +30',
+    maxColors: '最多颜色数（限制买豆种类）',
+    dither: '抖动算法',
+    ditherOff: '关闭', ditherFs: 'Floyd–Steinberg',
+    ditherHint: '照片 / 渐变图开启后过渡更自然',
+    shape: '豆子样式', shapeCircle: '圆形', shapeSquare: '像素方块',
+    grid: '网格线', on: '显示', off: '隐藏',
+    printCodes: '导出图格内印色号', onOff: '开', offOff: '关',
+    changeImage: '换一张图',
+    preview: '图纸预览',
+    legendTitle: '用到的颜色',
+    legendHint: '按用量排序，编码即 {brand} 袋装编码',
+    unitBead: '豆', unitColor: '种颜色', totalBeads: '共用豆', unitPiece: '颗',
+    alphaTip: '透明背景不放置豆子；若希望保留背景，请使用不带透明通道的图片。',
+    highlightTip: '正在高亮 {code} 的位置，再次点击色卡条目可取消。',
+    dlFull: '下载图纸 PNG（色号 + 坐标 + 色卡）',
+    dlPlain: '下载图纸 PNG（不含色卡清单）',
+    dlCsv: '下载颜色清单 CSV',
+    exportTitle: '拼豆图纸',
+    sortedByUsage: '按用量排序',
+    csvBrand: '品牌', csvCode: '编码', csvName: '名称', csvHex: '色值', csvCount: '数量',
+    csvSize: '图纸尺寸', csvTotal: '共',
+    privacy: '所有图像处理都在你的浏览器本地完成，不上传服务器、不依赖网络、不含统计代码。',
+    licenseNote: 'GPL-3.0'
+  },
+  en: {
+    tagline: 'Image to bead pattern',
+    lead: 'Turn any picture into a fuse-bead (Perler / MARD / COCO…) pattern: pick a brand color chart, set width, brightness and dithering, then export a PNG with row/column rulers and bag codes, plus a CSV color list. Everything runs locally in your browser.',
+    dropTitle: 'Click to choose an image, or drag & drop / paste (Ctrl+V)',
+    dropSub: 'JPG / PNG / WebP　·　processed locally, never uploaded',
+    brand: 'Color chart brand',
+    width: 'Pattern width (beads):',
+    brightness: 'Brightness:',
+    brightnessHint: 'Finished bead art tends to look darker — try +10 ~ +30 for photos',
+    maxColors: 'Max colors (limits how many bags to buy)',
+    dither: 'Dithering',
+    ditherOff: 'Off', ditherFs: 'Floyd–Steinberg',
+    ditherHint: 'Photos and gradients blend better with it on',
+    shape: 'Bead shape', shapeCircle: 'Round', shapeSquare: 'Square',
+    grid: 'Grid lines', on: 'Show', off: 'Hide',
+    printCodes: 'Print code inside cells', onOff: 'On', offOff: 'Off',
+    changeImage: 'Change image',
+    preview: 'Pattern preview',
+    legendTitle: 'Colors used',
+    legendHint: 'Sorted by usage — codes are {brand} bag codes',
+    unitBead: 'beads wide', unitColor: 'colors', totalBeads: 'Total beads', unitPiece: '',
+    alphaTip: 'Transparent areas are left empty. Use an image without alpha if you want a filled background.',
+    highlightTip: 'Highlighting {code} — click the swatch again to clear.',
+    dlFull: 'Download PNG (codes + rulers + legend)',
+    dlPlain: 'Download PNG (pattern only)',
+    dlCsv: 'Download color list CSV',
+    exportTitle: 'Bead pattern',
+    sortedByUsage: 'sorted by usage',
+    csvBrand: 'Brand', csvCode: 'Code', csvName: 'Name', csvHex: 'Hex', csvCount: 'Count',
+    csvSize: 'Pattern size', csvTotal: 'Total',
+    privacy: 'All processing happens locally in your browser — no upload, no network calls, no analytics.',
+    licenseNote: 'GPL-3.0'
+  }
+};
+const t = (k) => (I18N[S.lang] && I18N[S.lang][k]) || k;
+
+function applyI18n() {
+  document.documentElement.lang = S.lang === 'zh' ? 'zh-CN' : 'en';
+  document.querySelectorAll('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  // 分段按钮文案
+  const setSeg = (id, map) => {
+    document.querySelectorAll('#' + id + ' button').forEach((b) => { b.textContent = t(map[b.dataset.v]); });
+  };
+  setSeg('dither', { none: 'ditherOff', fs: 'ditherFs' });
+  setSeg('shape', { circle: 'shapeCircle', square: 'shapeSquare' });
+  setSeg('showGrid', { 1: 'on', 0: 'off' });
+  setSeg('printCodes', { 1: 'onOff', 0: 'offOff' });
+  document.getElementById('lang-zh').classList.toggle('on', S.lang === 'zh');
+  document.getElementById('lang-en').classList.toggle('on', S.lang === 'en');
+  if (stats) renderLegend();
+}
+
+/* ---------- 7. UI 绑定 ---------- */
+const $ = (id) => document.getElementById(id);
+
+function buildBrandSelect() {
+  $('brand').innerHTML = BRANDS.map((b) =>
+    '<option value="' + b.id + '">' + b.name + '（' + b.note + ' ' + (S.lang === 'zh' ? '色' : 'colors') + '）</option>').join('');
+  $('brand').value = S.brand;
+}
+function buildMaxColorSelect() {
+  const opts = maxColorOptions();
+  if (!opts.includes(S.maxColors)) S.maxColors = opts[opts.length - 1];
+  $('maxColors').innerHTML = opts.map((n) =>
+    '<option value="' + n + '">' + n + (S.lang === 'zh' ? ' 种' : '') + (n === 24 ? (S.lang === 'zh' ? '（推荐）' : ' (recommended)') : '') +
+    (n === pal().length ? (S.lang === 'zh' ? '（全部颜色）' : ' (all colors)') : '') + '</option>').join('');
+  $('maxColors').value = S.maxColors;
+}
+function buildPresets() {
+  const list = [[29, S.lang === 'zh' ? '小底板 29' : 'Small board 29'], [58, S.lang === 'zh' ? '2×2 拼板 58' : '2×2 board 58'], [87, S.lang === 'zh' ? '3×3 拼板 87' : '3×3 board 87']];
+  $('presets').innerHTML = list.map(([n, label]) =>
+    '<button type="button" data-w="' + n + '" class="' + (S.width === n ? 'on' : '') + '">' + label + '</button>').join('');
+  $('presets').querySelectorAll('button').forEach((b) => {
+    b.onclick = () => { S.width = Number(b.dataset.w); $('width').value = S.width; $('wLabel').textContent = S.width; buildPresets(); scheduleGenerate(); };
+  });
+}
+
+let genTimer = 0;
+function scheduleGenerate() { clearTimeout(genTimer); genTimer = setTimeout(generate, 120); }
+
+function loadImage(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  if (objectUrl) URL.revokeObjectURL(objectUrl);
+  objectUrl = URL.createObjectURL(file);
+  const image = new Image();
+  image.onload = () => {
+    img = image;
+    $('drop').hidden = true;
+    $('main').hidden = false;
+    generate();
+  };
+  image.src = objectUrl;
+}
+
+function showMain() {
+  $('drop').hidden = true;
+  $('main').hidden = false;
+}
+
+function resetAll() {
+  clearTimeout(genTimer);
+  if (objectUrl) URL.revokeObjectURL(objectUrl);
+  objectUrl = ''; img = null; grid = new Int16Array(0); gridH = 0; stats = null; legend = []; highlight = null;
+  $('main').hidden = true; $('drop').hidden = false; $('legendPanel').hidden = true;
+}
+
+function init() {
+  buildBrandSelect(); buildMaxColorSelect(); buildPresets(); applyI18n();
+
+  $('file').addEventListener('change', (e) => { loadImage(e.target.files[0]); e.target.value = ''; });
+  $('drop').addEventListener('click', () => $('file').click());
+  ['dragenter', 'dragover'].forEach((ev) => $('drop').addEventListener(ev, (e) => { e.preventDefault(); $('drop').classList.add('over'); }));
+  ['dragleave', 'drop'].forEach((ev) => $('drop').addEventListener(ev, (e) => { e.preventDefault(); $('drop').classList.remove('over'); }));
+  $('drop').addEventListener('drop', (e) => loadImage(e.dataTransfer.files[0]));
+  window.addEventListener('paste', (e) => {
+    const item = Array.from((e.clipboardData && e.clipboardData.items) || []).find((i) => i.type.startsWith('image/'));
+    if (item) loadImage(item.getAsFile());
+  });
+
+  $('brand').addEventListener('change', () => { S.brand = $('brand').value; buildMaxColorSelect(); generate(); });
+  $('width').addEventListener('input', () => { S.width = Number($('width').value); $('wLabel').textContent = S.width; buildPresets(); scheduleGenerate(); });
+  $('brightness').addEventListener('input', () => { S.brightness = Number($('brightness').value); $('bLabel').textContent = (S.brightness > 0 ? '+' : '') + S.brightness; scheduleGenerate(); });
+  $('maxColors').addEventListener('change', () => { S.maxColors = Number($('maxColors').value); generate(); });
+  const segBind = (id, key, cast) => {
+    $(id).querySelectorAll('button').forEach((b) => {
+      b.onclick = () => {
+        S[key] = cast(b.dataset.v);
+        $(id).querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+        if (key === 'showGrid' || key === 'printCodes') renderPreview();
+        else generate();
+      };
+    });
+  };
+  segBind('dither', 'dither', String);
+  segBind('shape', 'shape', String);
+  segBind('showGrid', 'showGrid', (v) => v === '1');
+  segBind('printCodes', 'printCodes', (v) => v === '1');
+
+  $('reset').addEventListener('click', resetAll);
+  $('dlFull').addEventListener('click', () => exportPng(true));
+  $('dlPlain').addEventListener('click', () => exportPng(false));
+  $('dlCsv').addEventListener('click', exportCsv);
+  $('lang-zh').addEventListener('click', () => { S.lang = 'zh'; buildBrandSelect(); buildMaxColorSelect(); buildPresets(); applyI18n(); });
+  $('lang-en').addEventListener('click', () => { S.lang = 'en'; buildBrandSelect(); buildMaxColorSelect(); buildPresets(); applyI18n(); });
+
+  $('wLabel').textContent = S.width;
+  $('bLabel').textContent = '0';
+}
+
+/* 供自动化测试 / 二次开发使用的小接口 */
+window.BeadForge = {
+  BRANDS,
+  get state() { return { ...S, stats, legend, colors: legend.length }; },
+  load(image) { img = image; showMain(); generate(); return { stats, legend }; },
+  generate, exportPng, exportCsv, drawExport,
+  set(key, value) { S[key] = value; if (key === 'brand') buildMaxColorSelect(); }
+};
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+else init();
+</script>
+</body>
+</html>
